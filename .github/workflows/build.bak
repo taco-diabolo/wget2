@@ -1,0 +1,182 @@
+name: Build MinGW Environment
+
+on:
+    workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      PREFIX: x86_64-w64-mingw32
+      INSTALLDIR: ${{ github.workspace }}/local/${PREFIX}
+      PKG_CONFIG_PATH: ${INSTALLDIR}/lib/pkgconfig:${{ github.workspace }}/${PREFIX}/lib/pkgconfig
+      PKG_CONFIG_LIBDIR: ${INSTALLDIR}/lib/pkgconfig
+      PKG_CONFIG: ${{ github.workspace }}/bin/${PREFIX}-pkg-config
+      CPPFLAGS: "-I${INSTALLDIR}/include"
+      LDFLAGS: "-L${INSTALLDIR}/lib"
+      CFLAGS: "-O2 -g"
+      WINEPATH: "${INSTALLDIR}/bin;${INSTALLDIR}/lib;${{ github.workspace }}/${PREFIX}/bin;${{ github.workspace }}/${PREFIX}/lib"
+      GNULIB_REFDIR: ${{ github.workspace }}/local/gnulib
+
+    steps:
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install --no-install-recommends -y \
+          git autoconf autoconf-archive autopoint automake autogen libtool make wine flex bison gettext \
+          gperf mingw-w64 pkg-config-mingw-w64-x86-64 ca-certificates wget patch texinfo gengetopt curl \
+          lzip pandoc rsync python3 binfmt-support bc cmake
+
+    - name: Clone gnulib
+      run: git clone --recursive https://github.com/coreutils/gnulib.git $GNULIB_REFDIR
+
+    - name: Build libiconv
+      run: |
+        wget -q -O- https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz | tar xz
+        cd libiconv-1.17
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --prefix=$INSTALLDIR
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf libiconv-1.17
+
+    - name: Build libunistring
+      run: |
+        wget -q -O- https://ftp.gnu.org/gnu/libunistring/libunistring-latest.tar.gz | tar xz
+        cd libunistring-*
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --prefix=$INSTALLDIR
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf libunistring-*
+
+    - name: Build libidn2
+      run: |
+        wget -q -O- https://ftp.gnu.org/gnu/libidn/libidn2-2.3.3.tar.gz | tar xz
+        cd libidn2-*
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --disable-doc --disable-gcc-warnings --prefix=$INSTALLDIR
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf libidn2-*
+
+    - name: Build libpsl
+      run: |
+        git clone --recursive https://github.com/rockdaboot/libpsl.git
+        cd libpsl
+        ./autogen.sh
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --enable-runtime=libidn2 --enable-builtin --prefix=$INSTALLDIR
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf libpsl
+
+    - name: Build gmp
+      run: |
+        git clone https://github.com/gmp-mirror/gmp-6.3
+        cd gmp-6.3
+        ./.bootstrap
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf gmp-6.3
+
+    - name: Build nettle
+      run: |
+        git clone https://git.lysator.liu.se/nettle/nettle.git
+        cd nettle
+        git checkout nettle_3.8.1_release_20220727
+        bash .bootstrap
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --disable-documentation --prefix=$INSTALLDIR
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf nettle
+
+    - name: Build gnutls
+      run: |
+        wget -q -O- https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.10.tar.xz | tar x --xz
+        cd gnutls-3.8.10
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
+          --with-nettle-mini --disable-shared --enable-static --with-included-libtasn1 \
+          --with-included-unistring --without-p11-kit --disable-doc --disable-tests --disable-full-test-suite \
+          --disable-tools --disable-cxx --disable-maintainer-mode --disable-libdane --disable-hardware-acceleration \
+          --disable-guile --disable-gcc-warnings
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf gnutls-3.8.10
+
+    - name: Build zlib-ng
+      run: |
+        git clone https://github.com/zlib-ng/zlib-ng
+        cd zlib-ng
+        CROSS_PREFIX="$PREFIX-" ARCH="x86_64" CFLAGS="-O2" CC=$PREFIX-gcc \
+          ./configure --prefix=$INSTALLDIR --static --64 --zlib-compat
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf zlib-ng
+
+    - name: Build pcre2
+      run: |
+        git clone https://github.com/PCRE2Project/pcre2
+        cd pcre2
+        ./autogen.sh
+        ./configure --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf pcre2
+
+    - name: Build nghttp2
+      run: |
+        wget -q -O- https://github.com/nghttp2/nghttp2/releases/download/v1.46.0/nghttp2-1.46.0.tar.gz | tar xz
+        cd nghttp2-1.46.0
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static \
+          --disable-python-bindings --disable-examples --disable-app --disable-failmalloc --disable-hpack-tools
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf nghttp2-1.46.0
+
+    - name: Build dlfcn-win32
+      run: |
+        git clone --depth=1 https://github.com/dlfcn-win32/dlfcn-win32.git
+        cd dlfcn-win32
+        ./configure --prefix=$PREFIX --cc=$PREFIX-gcc
+        make -j$(nproc)
+        cp -p libdl.a $INSTALLDIR/lib/
+        cp -p src/dlfcn.h $INSTALLDIR/include/
+        cd ..
+        rm -rf dlfcn-win32
+
+    - name: Build libmicrohttpd
+      run: |
+        wget -q -O- https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-latest.tar.gz | tar xz
+        cd libmicrohttpd-*
+        ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR --disable-doc --disable-examples --disable-shared --enable-static
+        make -j$(nproc)
+        make install
+        cd ..
+        rm -rf libmicrohttpd-*
+
+    - name: Build wget2
+      run: |
+        git clone https://gitlab.com/gnuwget/wget2.git
+        cd wget2
+        ./bootstrap --skip-po
+        LDFLAGS="-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive" CFLAGS="-O2 -DNGHTTP2_STATICLIB" \
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --without-gpgme --enable-threads=windows
+        make -C lib -j$(nproc)
+        make -C libwget -j$(nproc)
+        make -C src -j$(nproc)
+
+    - name: Upload wget2 artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wget2-binary
+        path: wget2/src/wget2
