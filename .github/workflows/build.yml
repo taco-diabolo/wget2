@@ -9,14 +9,14 @@ jobs:
 
     env:
       PREFIX: x86_64-w64-mingw32
-      INSTALLDIR: ${{ github.workspace }}/local/$PREFIX
-      PKG_CONFIG_PATH: $INSTALLDIR/lib/pkgconfig:${{ github.workspace }}/$PREFIX/lib/pkgconfig
-      PKG_CONFIG_LIBDIR: $INSTALLDIR/lib/pkgconfig
+      INSTALLDIR: ${{ github.workspace }}/local/${PREFIX}
+      PKG_CONFIG_PATH: ${INSTALLDIR}/lib/pkgconfig:${{ github.workspace }}/${PREFIX}/lib/pkgconfig
+      PKG_CONFIG_LIBDIR: ${INSTALLDIR}/lib/pkgconfig
       PKG_CONFIG: ${{ github.workspace }}/bin/${PREFIX}-pkg-config
-      CPPFLAGS: "-I$INSTALLDIR/include"
-      LDFLAGS: "-L$INSTALLDIR/lib"
+      CPPFLAGS: "-I${INSTALLDIR}/include"
+      LDFLAGS: "-L${INSTALLDIR}/lib"
       CFLAGS: "-O2 -g"
-      WINEPATH: "$INSTALLDIR/bin;$INSTALLDIR/lib;${{ github.workspace }}/$PREFIX/bin;${{ github.workspace }}/$PREFIX/lib"
+      WINEPATH: "${INSTALLDIR}/bin;${INSTALLDIR}/lib;${{ github.workspace }}/${PREFIX}/bin;${{ github.workspace }}/${PREFIX}/lib"
       GNULIB_REFDIR: ${{ github.workspace }}/local/gnulib
 
     steps:
