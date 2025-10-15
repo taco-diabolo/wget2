@@ -9,14 +9,14 @@ jobs:
 
     env:
       PREFIX: x86_64-w64-mingw32
-      INSTALLDIR: ${{ github.workspace }}/local/x86_64-w64-mingw32
-      PKG_CONFIG_PATH: ${{ github.workspace }}/local/x86_64-w64-mingw32/lib/pkgconfig:${{ github.workspace }}/x86_64-w64-mingw32/lib/pkgconfig
-      PKG_CONFIG_LIBDIR: ${{ github.workspace }}/local/x86_64-w64-mingw32/lib/pkgconfig
-      PKG_CONFIG: ${{ github.workspace }}/bin/x86_64-w64-mingw32-pkg-config
-      CPPFLAGS: "-I${{ github.workspace }}/local/x86_64-w64-mingw32/include"
-      LDFLAGS: "-L${{ github.workspace }}/local/x86_64-w64-mingw32/lib"
+      INSTALLDIR: ${{ github.workspace }}/local/$PREFIX
+      PKG_CONFIG_PATH: $INSTALLDIR/lib/pkgconfig:${{ github.workspace }}/$PREFIX/lib/pkgconfig
+      PKG_CONFIG_LIBDIR: $INSTALLDIR/lib/pkgconfig
+      PKG_CONFIG: ${{ github.workspace }}/bin/${PREFIX}-pkg-config
+      CPPFLAGS: "-I$INSTALLDIR/include"
+      LDFLAGS: "-L$INSTALLDIR/lib"
       CFLAGS: "-O2 -g"
-      WINEPATH: "${{ github.workspace }}/local/x86_64-w64-mingw32/bin;${{ github.workspace }}/local/x86_64-w64-mingw32/lib;${{ github.workspace }}/x86_64-w64-mingw32/bin;${{ github.workspace }}/x86_64-w64-mingw32/lib"
+      WINEPATH: "$INSTALLDIR/bin;$INSTALLDIR/lib;${{ github.workspace }}/$PREFIX/bin;${{ github.workspace }}/$PREFIX/lib"
       GNULIB_REFDIR: ${{ github.workspace }}/local/gnulib
 
     steps:
@@ -114,7 +114,7 @@ jobs:
       run: |
         git clone https://github.com/zlib-ng/zlib-ng
         cd zlib-ng
-        CROSS_PREFIX="x86_64-w64-mingw32-" ARCH="x86_64" CFLAGS="-O2" CC=x86_64-w64-mingw32-gcc \
+        CROSS_PREFIX="$PREFIX-" ARCH="x86_64" CFLAGS="-O2" CC=$PREFIX-gcc \
           ./configure --prefix=$INSTALLDIR --static --64 --zlib-compat
         make -j$(nproc)
         make install
