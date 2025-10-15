@@ -32,7 +32,7 @@ jobs:
           lzip pandoc rsync python3 binfmt-support bc cmake
 
     - name: Clone gnulib
-      run: git clone --recursive https://git.savannah.gnu.org/git/gnulib.git $GNULIB_REFDIR
+      run: git clone --recursive https://github.com/coreutils/gnulib.git $GNULIB_REFDIR
 
     - name: Build libiconv
       run: |
