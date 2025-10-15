@@ -10,17 +10,24 @@ jobs:
 
     env:
       PREFIX: x86_64-w64-mingw32
-      INSTALLDIR: ${{ github.workspace }}/${{ env.PREFIX }}
-      GNULIB_REFDIR: ${{ github.workspace }}/gnulib
-      CONFIGURE_BASE_FLAGS: ""
-      PKG_CONFIG_PATH: ${{ github.workspace }}/${{ env.PREFIX }}/lib/pkgconfig
-      PKG_CONFIG_LIBDIR: ${{ github.workspace }}/${{ env.PREFIX }}/lib/pkgconfig
-      CPPFLAGS: -I${{ github.workspace }}/${{ env.PREFIX }}/include
-      LDFLAGS: -L${{ github.workspace }}/${{ env.PREFIX }}/lib
-      CFLAGS: -O2 -g
-      WINEPATH: ${{ github.workspace }}/${{ env.PREFIX }}/bin;${{ github.workspace }}/${{ env.PREFIX }}/lib
 
     steps:
+      - name: Set derived env vars
+        run: |
+          echo "INSTALLDIR=${GITHUB_WORKSPACE}/${PREFIX}" >> $GITHUB_ENV
+          echo "GNULIB_REFDIR=${GITHUB_WORKSPACE}/gnulib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=${GITHUB_WORKSPACE}/${PREFIX}/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_LIBDIR=${GITHUB_WORKSPACE}/${PREFIX}/lib/pkgconfig" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${GITHUB_WORKSPACE}/${PREFIX}/include" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${GITHUB_WORKSPACE}/${PREFIX}/lib" >> $GITHUB_ENV
+          echo "WINEPATH=${GITHUB_WORKSPACE}/${PREFIX}/bin;${GITHUB_WORKSPACE}/${PREFIX}/lib" >> $GITHUB_ENV
+
+      - name: Example use of PREFIX and INSTALLDIR
+        run: |
+          echo "PREFIX = $PREFIX"
+          echo "INSTALLDIR = $INSTALLDIR"
+    
+      
       - name: Install dependencies
         run: |
           sudo apt-get update -y
