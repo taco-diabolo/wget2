@@ -11,15 +11,15 @@ jobs:
 
     env:
       PREFIX: x86_64-w64-mingw32
-      INSTALLDIR: /usr/local/x86_64-w64-mingw32
-      PKG_CONFIG_PATH: /usr/local/x86_64-w64-mingw32/lib/pkgconfig:/usr/x86_64-w64-mingw32/lib/pkgconfig
-      PKG_CONFIG_LIBDIR: /usr/local/x86_64-w64-mingw32/lib/pkgconfig
-      PKG_CONFIG: /usr/bin/x86_64-w64-mingw32-pkg-config
-      CPPFLAGS: "-I/usr/local/x86_64-w64-mingw32/include"
-      LDFLAGS: "-L/usr/local/x86_64-w64-mingw32/lib"
+      INSTALLDIR: ${{ github.workspace }}/local/x86_64-w64-mingw32
+      PKG_CONFIG_PATH: ${{ github.workspace }}/local/x86_64-w64-mingw32/lib/pkgconfig:${{ github.workspace }}/x86_64-w64-mingw32/lib/pkgconfig
+      PKG_CONFIG_LIBDIR: ${{ github.workspace }}/local/x86_64-w64-mingw32/lib/pkgconfig
+      PKG_CONFIG: ${{ github.workspace }}/bin/x86_64-w64-mingw32-pkg-config
+      CPPFLAGS: "-I${{ github.workspace }}/local/x86_64-w64-mingw32/include"
+      LDFLAGS: "-L${{ github.workspace }}/local/x86_64-w64-mingw32/lib"
       CFLAGS: "-O2 -g"
-      WINEPATH: "/usr/local/x86_64-w64-mingw32/bin;/usr/local/x86_64-w64-mingw32/lib;/usr/x86_64-w64-mingw32/bin;/usr/x86_64-w64-mingw32/lib"
-      GNULIB_REFDIR: /usr/local/gnulib
+      WINEPATH: "${{ github.workspace }}/local/x86_64-w64-mingw32/bin;${{ github.workspace }}/local/x86_64-w64-mingw32/lib;${{ github.workspace }}/x86_64-w64-mingw32/bin;${{ github.workspace }}/x86_64-w64-mingw32/lib"
+      GNULIB_REFDIR: ${{ github.workspace }}/local/gnulib
 
     steps:
 
