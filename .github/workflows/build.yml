@@ -150,6 +150,10 @@ jobs:
           make -C libwget -j$(nproc)
           make -C src -j$(nproc)
 
+      - name: Strip debug symbols from wget2
+        run: |
+          $PREFIX-strip wget2/src/wget2.exe
+          
       - name: Upload result
         uses: actions/upload-artifact@v4
         with:
