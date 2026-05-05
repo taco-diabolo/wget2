@@ -34,7 +34,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y \
             git autoconf autoconf-archive autopoint automake autogen libtool make wine flex bison \
             gettext gperf mingw-w64 pkg-config-mingw-w64-x86-64 ca-certificates wget patch texinfo \
-            gengetopt curl lzip pandoc rsync python3 binfmt-support bc cmake xz-utils
+            gengetopt curl lzip pandoc rsync python3 binfmt-support bc cmake
 
       - name: Clone Gnulib
         run: |
@@ -42,25 +42,25 @@ jobs:
 
       - name: Build libiconv
         run: |
-          wget -q -O- https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz | tar xz
+          wget -q -O- https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz | tar xz
           cd libiconv-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --prefix=$INSTALLDIR && \
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf libiconv-*
 
       - name: Build libunistring
         run: |
           wget -q -O- https://ftp.gnu.org/gnu/libunistring/libunistring-latest.tar.gz | tar xz
           cd libunistring-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static --prefix=$INSTALLDIR && \
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && rm -rf libunistring-*
 
       - name: Build libidn2
         run: |
-          wget -q -O- https://ftp.gnu.org/gnu/libidn/libidn2-2.3.3.tar.gz | tar xz
+          wget -q -O- https://ftp.gnu.org/gnu/libidn/libidn2-latest.tar.gz | tar xz
           cd libidn2-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
           --disable-doc --disable-gcc-warnings --prefix=$INSTALLDIR && \
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf libidn2-*
 
       - name: Build libpsl
         run: |
@@ -68,34 +68,34 @@ jobs:
           cd libpsl && ./autogen.sh && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
           --enable-runtime=libidn2 --enable-builtin --prefix=$INSTALLDIR && \
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf libpsl
 
       - name: Build GMP
         run: |
           git clone https://github.com/gmp-mirror/gmp-6.3
           cd gmp-6.3 && ./.bootstrap && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static && \
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf gmp-*
 
       - name: Build Nettle
         run: |
           git clone https://git.lysator.liu.se/nettle/nettle.git
-          cd nettle && git checkout nettle_3.8.1_release_20220727
+          cd nettle && git checkout nettle_3.10.2_release_20250626
           bash .bootstrap
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
             --disable-documentation --prefix=$INSTALLDIR
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf nettle
 
       - name: Build GnuTLS
         run: |
-          wget -q -O- https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.10.tar.xz | tar x --xz
+          wget -q -O- https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.11.tar.xz | tar x --xz
           cd gnutls-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
             --with-nettle-mini --disable-shared --enable-static --with-included-libtasn1 \
             --with-included-unistring --without-p11-kit --disable-doc --disable-tests --disable-full-test-suite \
             --disable-tools --disable-cxx --disable-maintainer-mode --disable-libdane --disable-hardware-acceleration \
             --disable-guile --disable-gcc-warnings
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf gnutls-*
 
       - name: Build zlib-ng
         run: |
@@ -103,22 +103,22 @@ jobs:
           cd zlib-ng && \
           CROSS_PREFIX="$PREFIX-" ARCH="x86_64" CFLAGS="-O2" CC=$PREFIX-gcc \
           ./configure --prefix=$INSTALLDIR --static --64 --zlib-compat
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf zlib-ng
 
       - name: Build PCRE2
         run: |
           git clone https://github.com/PCRE2Project/pcre2
           cd pcre2 && ./autogen.sh && \
           ./configure --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf pcre2
 
       - name: Build nghttp2
         run: |
-          wget -q -O- https://github.com/nghttp2/nghttp2/releases/download/v1.46.0/nghttp2-1.46.0.tar.gz | tar xz
+          wget -q -O- https://github.com/nghttp2/nghttp2/releases/download/v1.68.0/nghttp2-1.68.0.tar.gz | tar xz
           cd nghttp2-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static \
             --disable-python-bindings --disable-examples --disable-app --disable-failmalloc --disable-hpack-tools
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf nghttp2-*
 
       - name: Build dlfcn-win32
         run: |
@@ -129,6 +129,7 @@ jobs:
           mkdir -p $INSTALLDIR/lib $INSTALLDIR/include
           cp -p libdl.a $INSTALLDIR/lib/
           cp -p src/dlfcn.h $INSTALLDIR/include/
+          cd .. && rm -rf dlfcn-win32
 
       - name: Build libmicrohttpd
         run: |
@@ -136,7 +137,7 @@ jobs:
           cd libmicrohttpd-* && \
           ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
             --disable-doc --disable-examples --disable-shared --enable-static
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install && cd .. && rm -rf libmicrohttpd-*
 
       - name: Build Wget2
         run: |
