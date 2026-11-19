@@ -1,0 +1,307 @@
+name: wget2 win32 static build
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        description: 'Git-URL des wget2-Repos'
+        required: false
+        default: 'https://gitlab.com/gnuwget/wget2.git'
+      ref:
+        description: 'Branch oder Tag (leer = Defaultbranch)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win32-static:
+    name: wget2.exe (x86_64-w64-mingw32, static)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    # entspricht "FROM debian:trixie-slim"
+    container:
+      image: debian:trixie-slim
+      options: --user root   # explizit root, damit apt-get funktioniert
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      # RUN apt-get update && apt-get install ...
+      # (+ xz-utils für das GnuTLS-.tar.xz, + zstd für actions/cache im Container)
+      - name: Abhängigkeiten installieren (apt)
+        run: |
+          apt-get update -y
+          apt-get install --no-install-recommends -y \
+            git autoconf autoconf-archive autopoint automake autogen libtool \
+            make wine flex bison gettext gperf mingw-w64 mingw-w64-x86-64-dev \
+            pkg-config-mingw-w64-x86-64 ca-certificates wget patch texinfo \
+            gengetopt curl lzip pandoc rsync python3 binfmt-support bc cmake \
+            xz-utils zstd
+
+      # ENV-Block aus der Dockerfile, verschachtelte $VAR-Referenzen
+      # werden einmalig per Shell aufgelöst und exportiert
+      - name: Build-Umgebung setzen (ENV aus der Dockerfile)
+        run: |
+          PREFIX=x86_64-w64-mingw32
+          INSTALLDIR="/usr/local/$PREFIX"
+          export PREFIX INSTALLDIR
+          {
+            echo "PREFIX=$PREFIX"
+            echo "INSTALLDIR=$INSTALLDIR"
+            echo "PKG_CONFIG_PATH=$INSTALLDIR/lib/pkgconfig:/usr/$PREFIX/lib/pkgconfig"
+            echo "PKG_CONFIG_LIBDIR=$INSTALLDIR/lib/pkgconfig"
+            echo "PKG_CONFIG=/usr/bin/${PREFIX}-pkg-config"
+            echo "CPPFLAGS=-I$INSTALLDIR/include"
+            echo "LDFLAGS=-L$INSTALLDIR/lib"
+            echo "CFLAGS=-O2 -g"
+            echo "WINEPATH=$INSTALLDIR/bin;$INSTALLDIR/lib;/usr/$PREFIX/bin;/usr/$PREFIX/lib"
+            echo "GNULIB_REFDIR=/usr/local/gnulib"
+            echo "CONFIGURE_BASE_FLAGS=--host=$PREFIX --prefix=$INSTALLDIR"
+          } >> "$GITHUB_ENV"
+
+      # entspricht dem letzten RUN der Dockerfile:
+      # git clone https://gitlab.com/gnuwget/wget2.git
+      - name: wget2 klonen
+        env:
+          WGET2_URL: ${{ inputs.repo_url || 'https://gitlab.com/gnuwget/wget2.git' }}
+          WGET2_REF: ${{ inputs.ref }}
+        run: |
+          git clone "$WGET2_URL" "$GITHUB_WORKSPACE/wget2"
+          if [ -n "$WGET2_REF" ]; then
+            git -C "$GITHUB_WORKSPACE/wget2" checkout --force "$WGET2_REF"
+          fi
+          git -C "$GITHUB_WORKSPACE/wget2" log -1 --oneline
+
+      # Optional, aber empfohlen: gnulib + alle MinGW-Bibliotheken cachen.
+      # Bei Änderungen an den Build-Schritten den Key von "-v1" auf "-v2" hochzählen.
+      - name: Dependency-Cache restore (gnulib + MinGW-Libs)
+        id: depcache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /usr/local/gnulib
+            /usr/local/x86_64-w64-mingw32
+          key: wget2-win32-static-deps-v1
+          restore-keys: |
+            wget2-win32-static-deps-
+
+      - name: gnulib klonen (GNULIB_REFDIR)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          git clone --recursive https://git.savannah.gnu.org/git/gnulib.git "$GNULIB_REFDIR" || {
+            rm -rf "$GNULIB_REFDIR"
+            git clone --recursive https://github.com/coreutils/gnulib.git "$GNULIB_REFDIR"
+          }
+
+      - name: libiconv bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz | tar xz
+          cd libiconv-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX \
+            --disable-shared --enable-static --prefix=$INSTALLDIR
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf libiconv-*
+
+      - name: libunistring bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://ftp.gnu.org/gnu/libunistring/libunistring-latest.tar.gz | tar xz
+          cd libunistring-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX \
+            --disable-shared --enable-static --prefix=$INSTALLDIR
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf libunistring-*
+
+      - name: libidn2 bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://ftp.gnu.org/gnu/libidn/libidn2-latest.tar.gz | tar xz
+          cd libidn2-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
+            --disable-doc --disable-gcc-warnings --prefix=$INSTALLDIR
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf libidn2-*
+
+      - name: libpsl bauen (statisch, mit libidn2)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone --recursive https://github.com/rockdaboot/libpsl.git
+          cd libpsl
+          ./autogen.sh
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
+            --enable-runtime=libidn2 --enable-builtin --prefix=$INSTALLDIR
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf libpsl
+
+      - name: GMP bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone https://github.com/gmp-mirror/gmp-6.3
+          cd gmp-*
+          ./.bootstrap
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
+            --disable-shared --enable-static CC_FOR_BUILD=gcc CPP_FOR_BUILD="gcc -E"
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf gmp-*
+
+      - name: Nettle bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone https://git.lysator.liu.se/nettle/nettle.git
+          cd nettle
+          git checkout nettle_3.10.2_release_20250626
+          bash .bootstrap
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --disable-shared --enable-static \
+            --disable-documentation --prefix=$INSTALLDIR
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf nettle
+
+      - name: GnuTLS bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.13.tar.xz | tar x --xz
+          cd gnutls-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
+            --with-nettle-mini --disable-shared --enable-static --with-included-libtasn1 \
+            --with-included-unistring --without-p11-kit --disable-doc --disable-tests \
+            --disable-full-test-suite --disable-tools --disable-cxx --disable-maintainer-mode \
+            --disable-libdane --disable-hardware-acceleration --disable-guile --disable-gcc-warnings
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf gnutls-*
+
+      - name: zlib-ng bauen (statisch, zlib-compat)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone https://github.com/zlib-ng/zlib-ng
+          cd zlib-ng
+          CROSS_PREFIX="x86_64-w64-mingw32-" ARCH="x86_64" CFLAGS="-O2" CC=x86_64-w64-mingw32-gcc \
+            ./configure --prefix=$INSTALLDIR --static --64 --zlib-compat
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf zlib-ng
+
+      - name: PCRE2 bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone https://github.com/PCRE2Project/pcre2
+          cd pcre2
+          ./autogen.sh
+          ./configure --host=$PREFIX --prefix=$INSTALLDIR --disable-shared --enable-static
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf pcre2
+
+      - name: nghttp2 bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://github.com/nghttp2/nghttp2/releases/download/v1.68.0/nghttp2-1.68.0.tar.gz | tar xz
+          cd nghttp2-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
+            --disable-shared --enable-static --disable-python-bindings --disable-examples \
+            --disable-app --disable-failmalloc --disable-hpack-tools
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf nghttp2-*
+
+      - name: dlfcn-win32 bauen (dlopen-Emulation für Windows)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          git clone --depth=1 https://github.com/dlfcn-win32/dlfcn-win32.git
+          cd dlfcn-win32
+          ./configure --prefix=$PREFIX --cc=$PREFIX-gcc
+          make -j"$(nproc)"
+          cp -p libdl.a "$INSTALLDIR/lib/"
+          cp -p src/dlfcn.h "$INSTALLDIR/include/"
+          cd .. && rm -rf dlfcn-win32
+
+      - name: libmicrohttpd bauen (statisch)
+        if: steps.depcache.outputs.cache-hit != 'true'
+        run: |
+          cd /usr/local
+          wget -q -O- https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-latest.tar.gz | tar xz
+          cd libmicrohttpd-*
+          ./configure --build=x86_64-pc-linux-gnu --host=$PREFIX --prefix=$INSTALLDIR \
+            --disable-doc --disable-examples --disable-shared --enable-static
+          make -j"$(nproc)" && make install
+          cd .. && rm -rf libmicrohttpd-*
+
+      # Cache erst speichern, wenn ALLE Abhängigkeiten erfolgreich gebaut wurden
+      - name: Dependency-Cache speichern
+        if: steps.depcache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/gnulib
+            /usr/local/x86_64-w64-mingw32
+          key: wget2-win32-static-deps-v1
+
+      # RUN cd wget2 && ./bootstrap && configure && make (lib, libwget, src)
+      - name: wget2 bauen (statisch, Windows)
+        working-directory: wget2
+        run: |
+          ./bootstrap --skip-po
+          LDFLAGS="$LDFLAGS -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive" \
+            CFLAGS="-O2 -DNGHTTP2_STATICLIB" \
+            ./configure $CONFIGURE_BASE_FLAGS --build=x86_64-pc-linux-gnu --host=$PREFIX \
+              --disable-shared --enable-static --without-gpgme --enable-threads=windows
+          make -C lib -j"$(nproc)"
+          make -C libwget -j"$(nproc)"
+          make -C src -j"$(nproc)"
+          ls -lh src/*.exe   # Größe VOR dem Strip
+
+      # Debug-Symbole aus den fertigen EXEs entfernen
+      # (--strip-all = maximale Verkleinerung; alternativ --strip-unneeded)
+      - name: Debug-Symbole strippen
+        run: |
+          x86_64-w64-mingw32-strip --strip-all wget2/src/*.exe
+          ls -lh wget2/src/*.exe   # Größe NACH dem Strip
+
+      # Optional: Debug-Symbole vorher separat sichern, falls du später
+      # Crashes im Debugger (WinDbg/drmingw) analysieren willst
+      # - name: Debug-Symbole sichern
+      #   run: |
+      #     mkdir -p symbols
+      #     x86_64-w64-mingw32-objcopy --only-keep-debug wget2/src/wget2.exe symbols/wget2.exe.debug
+      # - uses: actions/upload-artifact@v4
+      #   with:
+      #     name: wget2-win64-static-debug-symbols
+      #     path: symbols/
+      #     if-no-files-found: error
+
+      # Optional: kurzer Smoke-Test unter Wine (soll den Job nie scheitern lassen)
+      - name: Smoke-Test mit Wine
+        working-directory: wget2
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          WINEDEBUG: -all
+          WINEDLLOVERRIDES: mscoree=d;mshtml=d
+        run: wine src/wget2.exe --version
+
+      - name: wget2.exe als Artifact hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: wget2-win64-static
+          path: |
+            wget2/src/*.exe
+          if-no-files-found: error
