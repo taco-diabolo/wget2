@@ -259,6 +259,16 @@ jobs:
       - name: wget2 bauen (statisch, Windows)
         working-directory: wget2
         run: |
+          # wget2 bindet gnulib als Git-Submodul ein (.gitmodules -> git.savannah.gnu.org).
+          # "./bootstrap" klont es per "git submodule update --init"; GNULIB_REFDIR wirkt
+          # dabei nur als lokale --reference, der Netzkontakt zu Savannah bleibt trotzdem
+          # nötig. Savannah liefert in CI immer wieder HTTP 502 -> Submodul-URL auf den
+          # offiziellen GitHub-Spiegel umbiegen (nur lokale Config, .gitmodules bleibt
+          # unangetastet) und die gecachte Kopie als Reference nutzen:
+          git config submodule.gnulib.url https://github.com/coreutils/gnulib.git
+          git submodule update --init --reference "$GNULIB_REFDIR" gnulib \
+            || { rm -rf gnulib; git submodule update --init gnulib; }
+
           ./bootstrap --skip-po
           LDFLAGS="$LDFLAGS -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive" \
             CFLAGS="-O2 -DNGHTTP2_STATICLIB" \
